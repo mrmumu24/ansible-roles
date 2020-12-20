@@ -1,0 +1,55 @@
+- name: create temporary directory
+  file:
+    path: /tmp/node-exporter
+    state: directory
+    owner: root
+    group: root
+    mode: 0755
+  become: true
+
+- name: download node exporter archive
+  get_url:
+    url: "https://github.com/prometheus/node_exporter/releases/download\
+          /v1.0.0-rc.0/node_exporter-1.0.0-rc.0.linux-amd64.tar.gz"
+    dest: /tmp/node-exporter
+
+- name: extract node exporter
+  unarchive:
+    src: /tmp/node-exporter/node_exporter-1.0.0-rc.0.linux-amd64.tar.gz
+    dest: /tmp/node-exporter
+    remote_src: true
+
+- name: create node exporter user
+  user:
+    name: nodexporter
+    state: present
+    create_home: false
+    shell: /bin/nologin
+    system: true
+
+- name: copy node exporter binary to /usr/local/bin
+  copy:
+    src: /tmp/node-exporter/node_exporter-1.0.0-rc.0.linux-amd64/node_exporter
+    dest: /usr/local/bin/node-exporter
+    owner: nodexporter
+    group: nodexporter
+    mode: 0750
+    remote_src: true
+  notify:
+    - restart service
+
+- name: copy systemd service file
+  copy:
+    src: node-exporter.service
+    dest: /etc/systemd/system/node-exporter.service
+    owner: root
+    group: root
+    mode: 0644
+  notify:
+    - reload daemon
+
+- name: ensure node-exporter is enabled and started
+  service:
+    name: node-exporter
+    state: started
+    enabled: true
