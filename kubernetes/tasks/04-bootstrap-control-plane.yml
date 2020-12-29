@@ -1,0 +1,93 @@
+- name: check if the control plane has been initialized
+  stat:
+    path: /etc/kubernetes/admin.conf
+  register: admin_conf
+  when: "'masters' in group_names"
+
+- name: init control plane
+  block:
+    - name: init first master
+      shell: >
+        kubeadm init
+        --control-plane-endpoint {{ apiserver.dns }}:{{ apiserver.port }}
+        --pod-network-cidr 10.244.0.0/16
+        --upload-certs
+    - name: create .kube folder
+      file:
+        path: "/home/{{ ansible_ssh_user }}/.kube"
+        state: directory
+        owner: "{{ ansible_ssh_user }}"
+        group: "{{ ansible_ssh_user }}"
+        mode: 0754
+
+    - name: copy adming.conf to ~./kube/confg
+      copy:
+        src: /etc/kubernetes/admin.conf
+        dest: "/home/{{ ansible_ssh_user }}/.kube/config"
+        owner: "{{ ansible_ssh_user }}"
+        group: "{{ ansible_ssh_user }}"
+        mode: 0644
+        remote_src: true
+
+    - name: copy flannel manifest file
+      copy:
+        src: flannel.yml
+        dest: "/home/{{ ansible_ssh_user }}/flannel.yml"
+        owner: "{{ ansible_ssh_user }}"
+        group: "{{ ansible_ssh_user }}"
+        mode: 0644
+
+    - name: deploy flannel network
+      shell: "kubectl apply -f /home/{{ ansible_ssh_user }}/flannel.yml"
+      become: false
+  delegate_to: master1
+  run_once: true
+  when: not admin_conf.stat.exists
+
+- name: create join command
+  shell: kubeadm token create --print-join-command
+  register: join_command
+  delegate_to: master1
+  run_once: true
+
+- name: distribute certs
+  block:
+    - name: generate certificate key
+      shell: kubeadm alpha certs certificate-key
+      register: cert_key
+
+    - name: regenerate certs with new certificate key
+      shell: >
+        kubeadm init phase upload-certs
+        --certificate-key {{ cert_key.stdout }}
+        --upload-certs
+  delegate_to: master1
+  run_once: true
+
+- name: join other masters to the control plane
+  block:
+    - name: join other masters to the control plane
+      shell: >
+        {{ join_command.stdout }}
+        --certificate-key {{ cert_key.stdout }}
+        --control-plane
+    - name: create .kube folder
+      file:
+        path: "/home/{{ ansible_ssh_user }}/.kube"
+        state: directory
+        owner: "{{ ansible_ssh_user }}"
+        group: "{{ ansible_ssh_user }}"
+        mode: 0754
+
+    - name: copy adming.conf to ~./kube/confg
+      copy:
+        src: /etc/kubernetes/admin.conf
+        dest: "/home/{{ ansible_ssh_user }}/.kube/config"
+        owner: "{{ ansible_ssh_user }}"
+        group: "{{ ansible_ssh_user }}"
+        mode: 0644
+        remote_src: true
+  when:
+    - "'masters' in group_names"
+    - ansible_hostname != "master1"
+    - not admin_conf.stat.exists
