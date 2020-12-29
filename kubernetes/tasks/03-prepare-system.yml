@@ -1,0 +1,69 @@
+- name: add kubernetes repo
+  yum_repository:
+    name: kubernetes
+    description: kubernetes repository
+    baseurl:
+      - https://packages.cloud.google.com/yum/repos/kubernetes-el7-$basearch
+    gpgkey:
+      - https://packages.cloud.google.com/yum/doc/yum-key.gpg
+      - https://packages.cloud.google.com/yum/doc/rpm-package-key.gpg
+    gpgcheck: true
+
+- name: install kubernetes packages
+  yum:
+    name:
+      - kubeadm
+      - kubelet
+      - kubectl
+    state: latest
+
+- name: pull docker images required to create kubernetes cluster
+  shell: kubeadm config images pull
+
+- name: pull flannel docker image
+  docker_image:
+    name: quay.io/coreos/flannel:v0.12.0-amd64
+    source: pull
+
+- name: disable swap
+  shell: swapoff -a
+
+- name: remove swap from /etc/fstab
+  mount:
+    name: swap
+    fstype: swap
+    state: absent
+
+- name: disable selinux
+  shell: setenforce 0
+
+- name: disable selinux permamently
+  selinux:
+    state: disabled
+
+- name: enable br_netfilter kernel module
+  modprobe:
+    name: br_netfilter
+    state: present
+
+- name: let iptables see bridged traffic
+  sysctl:
+    name:
+      - net.bridge.bridge-nf-call-iptables
+      - net.bridge.bridge-nf-call-ip6tables
+    value: 1
+    state: present
+
+- name: create /etc/hosts
+  template:
+    src: hosts
+    dest: /etc/hosts
+
+- name: set hostname
+  hostname:
+    name: "{{ inventory_hostname }}"
+
+- name: ensure kubelet is enabled
+  systemd:
+    name: kubelet
+    enabled: true
