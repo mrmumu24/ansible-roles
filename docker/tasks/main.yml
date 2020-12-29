@@ -1,0 +1,33 @@
+- name: install required packages
+  yum:
+    name:
+      - yum-utils
+      - python-pip
+    state: latest
+
+- name: add docker repo
+  yum_repository:
+    name: docker-ce-stable
+    description: docker-ce stable repository
+    baseurl: "{{ docker_repo_url }}"
+    gpgkey: "{{ docker_gpg_key }}"
+    gpgcheck: true
+
+- name: install docker engine
+  yum:
+    name:
+      - docker-ce
+      - docker-ce-cli
+      - containerd.io
+    state: latest
+
+- name: install docker-py
+  pip:
+    name: docker-py
+    state: present
+
+- name: ensure docker is enabled and started
+  service:
+    name: docker
+    state: started
+    enabled: true
