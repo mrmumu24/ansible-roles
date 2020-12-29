@@ -1,0 +1,15 @@
+- name: install packages
+  yum:
+    name:
+      - epel-release
+      - yum-utils
+      - traceroute
+      - telnet
+      - htop
+      - vim
+    state: latest
+
+- name: update all packages
+  yum:
+    name: "*"
+    state: latest
